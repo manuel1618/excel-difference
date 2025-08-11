@@ -22,7 +22,13 @@ def main():
         "--key-column",
         type=int,
         default=1,
-        help="Column to use for matching rows (1-based, default=1)",
+        help="Column to use for matching rows (1-based, default=1, 0 for auto-detect)",
+    )
+    parser.add_argument(
+        "--key-row",
+        type=int,
+        default=1,
+        help="Row to use for matching columns (1-based, default=1, 0 for auto-detect)",
     )
 
     args = parser.parse_args()
@@ -37,7 +43,7 @@ def main():
         sys.exit(1)
 
     try:
-        excel_diff(args.file1, args.file2, args.output, args.key_column)
+        excel_diff(args.file1, args.file2, args.output, args.key_column, args.key_row)
         print(f"Successfully generated difference file: {args.output}")
     except Exception as e:
         print(f"Error: {e}")

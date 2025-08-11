@@ -8,7 +8,7 @@ from excel_difference.excel_diff import excel_diff
 def test_real_excel_files():
     """Test the excel diff with the actual data files."""
     # Test with the actual data files
-    excel_diff("data/excel1.xlsx", "data/excel2.xlsx", "test_real_output.xlsx")
+    excel_diff("data/excel1.xlsx", "data/excel2.xlsx", "test_real_output.xlsx", 1, 1)
 
     # Verify the output file was created
     assert os.path.exists("test_real_output.xlsx"), "Output file was not created"

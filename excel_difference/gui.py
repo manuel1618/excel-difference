@@ -4,6 +4,8 @@ GUI for Excel difference generator.
 """
 
 import io
+import json
+import os
 import sys
 import threading
 import tkinter as tk
@@ -30,22 +32,110 @@ class ConsoleRedirector:
         pass
 
 
+class StateManager:
+    """Manages application state persistence."""
+
+    def __init__(self):
+        self.config_dir = Path.home() / ".excel_difference"
+        self.config_file = self.config_dir / "config.json"
+        self.config_dir.mkdir(exist_ok=True)
+
+    def save_state(self, file1_path, file2_path, output_path, key_column, key_row):
+        """Save application state to configuration file."""
+        config = {
+            "file1_path": file1_path,
+            "file2_path": file2_path,
+            "output_path": output_path,
+            "key_column": key_column,
+            "key_row": key_row,
+        }
+
+        try:
+            with open(self.config_file, "w") as f:
+                json.dump(config, f, indent=2)
+        except Exception as e:
+            print(f"Warning: Could not save configuration: {e}")
+
+    def load_state(self):
+        """Load application state from configuration file."""
+        default_config = {
+            "file1_path": "",
+            "file2_path": "",
+            "output_path": "",
+            "key_column": 1,
+            "key_row": 1,
+        }
+
+        if not self.config_file.exists():
+            return default_config
+
+        try:
+            with open(self.config_file, "r") as f:
+                config = json.load(f)
+                # Validate file paths still exist
+                for key in ["file1_path", "file2_path"]:
+                    if config.get(key) and not Path(config[key]).exists():
+                        config[key] = ""
+                return config
+        except Exception as e:
+            print(f"Warning: Could not load configuration: {e}")
+            return default_config
+
+
 class ExcelDiffGUI:
     """Main GUI class for Excel difference generator."""
 
     def __init__(self, root):
         self.root = root
         self.root.title("Excel Difference Generator")
-        self.root.geometry("800x600")
-        self.root.minsize(600, 400)
+        self.root.geometry("1000x800")
+        self.root.minsize(900, 700)
+
+        # Initialize state manager
+        self.state_manager = StateManager()
 
         # Variables
         self.file1_path = tk.StringVar()
         self.file2_path = tk.StringVar()
         self.output_path = tk.StringVar()
         self.key_column = tk.IntVar(value=1)
+        self.key_row = tk.IntVar(value=1)
+
+        # Load saved state
+        self.load_saved_state()
+
+        # Bind variables to save state when changed
+        self.key_column.trace_add("write", lambda *args: self.save_current_state())
+        self.key_row.trace_add("write", lambda *args: self.save_current_state())
 
         self.setup_ui()
+
+        # Bind window close event to save state
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def load_saved_state(self):
+        """Load saved state from configuration file."""
+        config = self.state_manager.load_state()
+        self.file1_path.set(config.get("file1_path", ""))
+        self.file2_path.set(config.get("file2_path", ""))
+        self.output_path.set(config.get("output_path", ""))
+        self.key_column.set(config.get("key_column", 0))
+        self.key_row.set(config.get("key_row", 0))
+
+    def save_current_state(self):
+        """Save current state to configuration file."""
+        self.state_manager.save_state(
+            self.file1_path.get(),
+            self.file2_path.get(),
+            self.output_path.get(),
+            self.key_column.get(),
+            self.key_row.get(),
+        )
+
+    def on_closing(self):
+        """Handle window closing event."""
+        self.save_current_state()
+        self.root.destroy()
 
     def setup_ui(self):
         """Setup the user interface."""
@@ -57,7 +147,7 @@ class ExcelDiffGUI:
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(4, weight=1)
+        main_frame.rowconfigure(8, weight=1)
 
         # Title
         title_label = ttk.Label(
@@ -104,10 +194,23 @@ class ExcelDiffGUI:
         )
         key_frame = ttk.Frame(main_frame)
         key_frame.grid(row=4, column=1, sticky=(tk.W, tk.E), padx=(5, 5), pady=5)
-
         ttk.Label(key_frame, text="Column to match rows (1-based):").pack(side=tk.LEFT)
         ttk.Spinbox(
             key_frame, from_=1, to=100, textvariable=self.key_column, width=10
+        ).pack(side=tk.LEFT, padx=(5, 0))
+
+        # Key row selection
+        ttk.Label(main_frame, text="Key Row:").grid(
+            row=5, column=0, sticky=tk.W, pady=5
+        )
+        key_row_frame = ttk.Frame(main_frame)
+        key_row_frame.grid(row=5, column=1, sticky=(tk.W, tk.E), padx=(5, 5), pady=5)
+
+        ttk.Label(key_row_frame, text="Row to match columns (1-based):").pack(
+            side=tk.LEFT
+        )
+        ttk.Spinbox(
+            key_row_frame, from_=1, to=100, textvariable=self.key_row, width=10
         ).pack(side=tk.LEFT, padx=(5, 0))
 
         # Run button
@@ -117,17 +220,17 @@ class ExcelDiffGUI:
             command=self.run_difference,
             style="Accent.TButton",
         )
-        self.run_button.grid(row=5, column=0, columnspan=3, pady=20)
+        self.run_button.grid(row=6, column=0, columnspan=3, pady=20)
 
         # Console output
         ttk.Label(main_frame, text="Console Output:").grid(
-            row=6, column=0, sticky=tk.W, pady=(20, 5)
+            row=7, column=0, sticky=tk.W, pady=(20, 5)
         )
 
         # Console text area
         self.console_text = scrolledtext.ScrolledText(main_frame, height=15, width=80)
         self.console_text.grid(
-            row=7, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5
+            row=8, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5
         )
 
         # Status bar
@@ -137,7 +240,7 @@ class ExcelDiffGUI:
             main_frame, textvariable=self.status_var, relief=tk.SUNKEN
         )
         status_bar.grid(
-            row=8, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(10, 0)
+            row=9, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(10, 0)
         )
 
     def browse_file1(self):
@@ -148,6 +251,7 @@ class ExcelDiffGUI:
         )
         if filename:
             self.file1_path.set(filename)
+            self.save_current_state()
 
     def browse_file2(self):
         """Browse for second Excel file."""
@@ -157,6 +261,7 @@ class ExcelDiffGUI:
         )
         if filename:
             self.file2_path.set(filename)
+            self.save_current_state()
 
     def browse_output(self):
         """Browse for output file."""
@@ -167,6 +272,7 @@ class ExcelDiffGUI:
         )
         if filename:
             self.output_path.set(filename)
+            self.save_current_state()
 
     def run_difference(self):
         """Run the difference generation in a separate thread."""
@@ -195,6 +301,9 @@ class ExcelDiffGUI:
                 "Error", f"File '{self.file2_path.get()}' does not exist."
             )
             return
+
+        # Save current state before running
+        self.save_current_state()
 
         # Disable run button and update status
         self.run_button.config(state="disabled")
@@ -233,6 +342,7 @@ class ExcelDiffGUI:
                 self.file2_path.get(),
                 self.output_path.get(),
                 self.key_column.get(),
+                self.key_row.get(),
             )
 
             print("Successfully generated difference file!")
